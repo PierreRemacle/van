@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Lock, Unlock, Loader2 } from 'lucide-react';
-import { CHAPTERS, fetchUnlockedChapters, writeUnlockedChapters } from './lib/unlock';
+import { CHAPTERS, fetchUnlockedChaptersStrict, writeUnlockedChapters } from './lib/unlock';
 
 const TOKEN_STORAGE_KEY = 'vanVoyageAdminToken';
 
@@ -10,13 +10,20 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState('');
+  const [loadError, setLoadError] = useState('');
 
-  useEffect(() => {
-    fetchUnlockedChapters().then(u => {
-      setUnlocked(u);
-      setLoading(false);
-    });
-  }, []);
+  const reload = () => {
+    setLoading(true);
+    setLoadError('');
+    // Authenticated when a token is already saved on this device — avoids
+    // the tight 60/hr anonymous GitHub rate limit while testing repeatedly.
+    fetchUnlockedChaptersStrict(token || undefined)
+      .then(u => setUnlocked(u))
+      .catch(e => setLoadError(e.message))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(reload, []);
 
   const handleTokenChange = (e) => {
     const value = e.target.value;
@@ -37,7 +44,12 @@ export default function AdminPage() {
     setStatus('Saving…');
     try {
       await writeUnlockedChapters(token, unlocked);
-      setStatus('Saved — her phone will see this next time she loads the page.');
+      // Re-read the gist to confirm it actually persisted, rather than
+      // trusting local state — this is what would have caught a silent
+      // write/read mismatch during testing.
+      const confirmed = await fetchUnlockedChaptersStrict(token);
+      setUnlocked(confirmed);
+      setStatus('Saved and confirmed — her phone will see this next time she loads the page.');
     } catch (e) {
       setStatus(`Failed to save: ${e.message}`);
     } finally {
@@ -51,6 +63,24 @@ export default function AdminPage() {
 
       {loading ? (
         <Loader2 className="w-6 h-6 animate-spin text-stone-500" />
+      ) : loadError ? (
+        <div className="w-full max-w-sm bg-stone-900/60 border border-red-900 rounded-xl p-5 flex flex-col gap-3 text-center">
+          <p className="text-sm text-red-300">Couldn't load current state: {loadError}</p>
+          <p className="text-[11px] text-stone-500">If this says rate limit, paste your token below then retry — authenticated reads get a much higher limit.</p>
+          <input
+            type="password"
+            value={token}
+            onChange={handleTokenChange}
+            placeholder="github_pat_..."
+            className="w-full px-3 py-2 rounded-lg bg-stone-800 border border-stone-700 text-stone-100 text-sm outline-none focus:border-amber-700"
+          />
+          <button
+            onClick={reload}
+            className="px-4 py-2 bg-amber-800 hover:bg-amber-700 transition rounded-lg text-white text-sm font-bold"
+          >
+            Retry
+          </button>
+        </div>
       ) : (
         <div className="w-full max-w-sm bg-stone-900/60 border border-stone-800 rounded-xl p-5 flex flex-col gap-4">
           <div>
