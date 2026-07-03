@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -7,7 +7,9 @@ import {
   Landmark,
   Clock,
   Printer,
+  Lock,
 } from 'lucide-react';
+import { CHAPTERS, DEFAULT_UNLOCKED, fetchUnlockedChapters } from './lib/unlock';
 
 const coverIconClass = "w-16 h-16 mx-auto mb-4 text-amber-100/70";
 
@@ -85,20 +87,38 @@ const pagesData = [
   { id: 37, type: 'back-cover', title: "Bon Voyage", description: "Safe travels on the winding roads of Belgium and Germany. Keep the engine cool and the spirit adventurous.", chapter: 'Monday' },
 ];
 
-const CHAPTERS = ['Friday', 'Saturday', 'Sunday', 'Monday'];
-
 export default function App() {
   const [activeChapter, setActiveChapter] = useState('Friday');
   const [currentSpread, setCurrentSpread] = useState(0);
   const [mobilePage, setMobilePage] = useState(0);
+  const [unlockedChapters, setUnlockedChapters] = useState(DEFAULT_UNLOCKED);
   const chapterPages = pagesData.filter(p => p.chapter === activeChapter);
   // Desktop viewer only: a black endpaper precedes the cover so the on-screen
   // book opens like a real hardback (blank left page, cover on the right).
   const viewerPages = [{ id: `black-${activeChapter}`, type: 'black-page' }, ...chapterPages];
   const totalSpreads = Math.ceil(viewerPages.length / 2);
   const activeTome = chapterPages.find(p => p.type === 'book-cover')?.tome;
+  const isUnlocked = (ch) => unlockedChapters.includes(ch);
+
+  useEffect(() => {
+    fetchUnlockedChapters().then(setUnlockedChapters);
+  }, []);
+
+  // If the active chapter gets locked (or was never unlocked), fall back to
+  // the first chapter that actually is unlocked.
+  useEffect(() => {
+    if (!unlockedChapters.includes(activeChapter)) {
+      const fallback = CHAPTERS.find(ch => unlockedChapters.includes(ch));
+      if (fallback) {
+        setActiveChapter(fallback);
+        setCurrentSpread(0);
+        setMobilePage(0);
+      }
+    }
+  }, [unlockedChapters]);
 
   const selectChapter = (ch) => {
+    if (!isUnlocked(ch)) return;
     setActiveChapter(ch);
     setCurrentSpread(0);
     setMobilePage(0);
@@ -292,15 +312,26 @@ export default function App() {
       `}</style>
 
       <div className="hidden md:flex gap-2 mb-8 bg-stone-900/50 p-2 rounded-xl border border-stone-800 flex-wrap justify-center print:hidden">
-        {CHAPTERS.map(ch => (
-          <button
-            key={ch}
-            onClick={() => selectChapter(ch)}
-            className={`px-4 py-2 text-xs font-bold rounded-lg transition ${activeChapter === ch ? 'bg-amber-800 text-white' : 'text-stone-400 hover:text-stone-100'}`}
-          >
-            {ch.toUpperCase()}
-          </button>
-        ))}
+        {CHAPTERS.map(ch => {
+          const unlocked = isUnlocked(ch);
+          return (
+            <button
+              key={ch}
+              onClick={() => selectChapter(ch)}
+              disabled={!unlocked}
+              className={`px-4 py-2 text-xs font-bold rounded-lg transition flex items-center gap-1.5 ${
+                activeChapter === ch
+                  ? 'bg-amber-800 text-white'
+                  : unlocked
+                  ? 'text-stone-400 hover:text-stone-100'
+                  : 'text-stone-600 cursor-not-allowed'
+              }`}
+            >
+              {!unlocked && <Lock className="w-3 h-3" />}
+              {ch.toUpperCase()}
+            </button>
+          );
+        })}
         <button
           onClick={() => window.print()}
           className="px-4 py-2 text-xs font-bold rounded-lg transition bg-stone-700 text-stone-100 hover:bg-amber-800 flex items-center gap-2"
@@ -343,15 +374,26 @@ export default function App() {
           <button onClick={handleMobileNext} disabled={mobilePage >= chapterPages.length - 1} className="p-2 bg-stone-800 text-stone-200 rounded-lg hover:bg-stone-700 transition disabled:opacity-30"><ChevronRight className="w-5 h-5" /></button>
         </div>
         <div className="flex items-center gap-1.5">
-          {CHAPTERS.map(ch => (
-            <button
-              key={ch}
-              onClick={() => selectChapter(ch)}
-              className={`flex-1 px-2 py-1.5 text-[11px] font-bold rounded-lg transition ${activeChapter === ch ? 'bg-amber-800 text-white' : 'bg-stone-800/60 text-stone-400'}`}
-            >
-              {ch.slice(0, 3).toUpperCase()}
-            </button>
-          ))}
+          {CHAPTERS.map(ch => {
+            const unlocked = isUnlocked(ch);
+            return (
+              <button
+                key={ch}
+                onClick={() => selectChapter(ch)}
+                disabled={!unlocked}
+                className={`flex-1 px-2 py-1.5 text-[11px] font-bold rounded-lg transition flex items-center justify-center gap-1 ${
+                  activeChapter === ch
+                    ? 'bg-amber-800 text-white'
+                    : unlocked
+                    ? 'bg-stone-800/60 text-stone-400'
+                    : 'bg-stone-800/30 text-stone-600'
+                }`}
+              >
+                {!unlocked && <Lock className="w-3 h-3" />}
+                {ch.slice(0, 3).toUpperCase()}
+              </button>
+            );
+          })}
         </div>
       </div>
 
